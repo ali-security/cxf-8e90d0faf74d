@@ -37,10 +37,17 @@ public class LazyAttachmentCollection
 
     private AttachmentDeserializer deserializer;
     private final List<Attachment> attachments = new ArrayList<>();
+    private final int maxAttachmentCount;
 
     public LazyAttachmentCollection(AttachmentDeserializer deserializer) {
+        // Kept for binary compatibility; uses the same default limit as AttachmentDeserializer (50)
+        this(deserializer, 50);
+    }
+
+    public LazyAttachmentCollection(AttachmentDeserializer deserializer, int maxAttachmentCount) {
         super();
         this.deserializer = deserializer;
+        this.maxAttachmentCount = maxAttachmentCount;
     }
 
     public List<Attachment> getLoadedAttachments() {
@@ -50,8 +57,13 @@ public class LazyAttachmentCollection
     private void loadAll() {
         try {
             Attachment a = deserializer.readNext();
+            int count = 0;
             while (a != null) {
                 attachments.add(a);
+                count++;
+                if (count > maxAttachmentCount) {
+                    throw new IOException("The message contains more attachments than are permitted");
+                }
                 a = deserializer.readNext();
             }
         } catch (IOException e) {
@@ -67,6 +79,9 @@ public class LazyAttachmentCollection
      */
     public boolean hasNext(boolean shouldLoadNew) throws IOException {
         if (shouldLoadNew) {
+            if (attachments.size() > maxAttachmentCount) {
+                throw new IOException("The message contains more attachments than are permitted");
+            }
             Attachment a = deserializer.readNext();
             if (a != null) {
                 attachments.add(a);
@@ -81,6 +96,7 @@ public class LazyAttachmentCollection
         return hasNext(true);
     }
     public Iterator<Attachment> iterator() {
+        // CHECKSTYLE:OFF
         return new Iterator<Attachment>() {
             int current;
             boolean removed;
@@ -92,6 +108,9 @@ public class LazyAttachmentCollection
 
                 // check if there is another attachment
                 try {
+                    if (attachments.size() > maxAttachmentCount) {
+                        throw new IOException("The message contains more attachments than are permitted");
+                    }
                     Attachment a = deserializer.readNext();
                     if (a == null) {
                         return false;
@@ -117,8 +136,8 @@ public class LazyAttachmentCollection
                 attachments.remove(--current);
                 removed = true;
             }
-
         };
+        // CHECKSTYLE:ON
     }
 
     public int size() {
@@ -128,10 +147,18 @@ public class LazyAttachmentCollection
     }
 
     public boolean add(Attachment arg0) {
+        if (attachments.size() > maxAttachmentCount) {
+            throw new RuntimeException(
+                new IOException("The message contains more attachments than are permitted"));
+        }
         return attachments.add(arg0);
     }
 
     public boolean addAll(Collection<? extends Attachment> arg0) {
+        if (attachments.size() + arg0.size() > maxAttachmentCount) {
+            throw new RuntimeException(
+                new IOException("The message contains more attachments than are permitted"));
+        }
         return attachments.addAll(arg0);
     }
 
